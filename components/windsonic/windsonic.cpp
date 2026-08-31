@@ -3,6 +3,8 @@
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 
+#include <cmath>
+
 namespace esphome {
 namespace windsonic {
 
@@ -123,8 +125,9 @@ bool WindSonicComponent::parse_measurement_response(const String &response) {
 
   const float direction = values[0];
   const float speed = values[1];
-  const float u = values.size() > 2 ? values[2] : 0.0f;
-  const float v = values.size() > 3 ? values[3] : 0.0f;
+  const float direction_radians = direction * static_cast<float>(M_PI / 180.0);
+  const float u = -speed * std::sin(direction_radians);
+  const float v = -speed * std::cos(direction_radians);
 
   if (this->direction_sensor_ != nullptr) {
     this->direction_sensor_->publish_state(direction);

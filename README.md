@@ -57,7 +57,7 @@ external_components:
 		components: [windsonic]
 ```
 
-The component sends the SDI-12 `M!` command, waits for the sensor's ready response, then requests `D0!`. The first four values are exposed as direction in degrees, speed in m/s, and the U/V wind-vector components in m/s.
+The component sends the SDI-12 `M!` command, waits for the sensor's ready response, then requests `D0!`. WindSonic returns direction in degrees, speed in m/s, and a status code. U and V are calculated from direction and speed as east-west and north-south velocity components in m/s.
 
 ## Troubleshooting
 
