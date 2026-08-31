@@ -4,6 +4,7 @@
 #include "esphome/core/helpers.h"
 
 #include <cmath>
+#include <cstdlib>
 
 namespace esphome {
 namespace windsonic {
@@ -72,93 +73,179 @@ bool WindSonicComponent::request_measurement(const char *measurement, String &re
   }
 
   std::string command = this->address_ + measurement + "!";
+  ESP_LOGVV(TAG, "Sending command: %s", command.c_str());
   this->sdi12_->clearBuffer();
   this->sdi12_->sendCommand(command.c_str(), 0);
-  if (!this->read_response(response) || response.length() < 4) {
+  String acknowledgement;
+  if (!this->read_response(acknowledgement) || acknowledgement.length() < 4 ||
+      acknowledgement[0] != this->address_[0]) {
+    ESP_LOGVV(TAG, "Complete reply: %s", acknowledgement.c_str());
     return false;
   }
+  ESP_LOGVV(TAG, "Complete reply: %s", acknowledgement.c_str());
 
-  const uint32_t wait_ms = static_cast<uint32_t>(response.substring(1, 4).toInt()) * 1000U;
+  const uint32_t wait_ms = static_cast<uint32_t>(acknowledgement.substring(1, 4).toInt()) * 1000U;
   if (wait_ms > 0) {
     delay(wait_ms);
+  } else {
+    delay(30);
   }
 
   command = this->address_ + "D0!";
+  ESP_LOGVV(TAG, "Sending command: %s", command.c_str());
   response = "";
   this->sdi12_->clearBuffer();
   this->sdi12_->sendCommand(command.c_str(), 0);
-  return this->read_response(response);
+  const bool received = this->read_response(response);
+  ESP_LOGVV(TAG, "Complete reply: %s", response.c_str());
+  return received;
 }
 
-bool WindSonicComponent::parse_measurement_response(const String &response) {
-  if (response.length() == 0) {
+bool WindSonicComponent::parse_measurement_response(const String &response, float &first, float &second, int &status) {
+  if (response.length() < 2 || response[0] != this->address_[0]) {
     return false;
   }
 
-  if (response[0] != this->address_[0]) {
+  const char *cursor = response.c_str() + 1;
+  char *end = nullptr;
+  first = strtof(cursor, &end);
+  if (end == cursor) {
     return false;
   }
-
-  std::vector<float> values;
-  String current = "";
-  for (size_t i = 1; i < response.length(); ++i) {
-    const char c = response[i];
-    if (c == '+' || c == '-') {
-      if (current.length() > 0) {
-        values.push_back(current.toFloat());
-      }
-      current = String(c);
-    } else if (c == '\r' || c == '\n') {
-      continue;
-    } else if ((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E') {
-      current += c;
-    }
-  }
-
-  if (current.length() > 0) {
-    values.push_back(current.toFloat());
-  }
-
-  if (values.size() < 2) {
+  cursor = end;
+  second = strtof(cursor, &end);
+  if (end == cursor) {
     return false;
   }
-
-  const float direction = values[0];
-  const float speed = values[1];
-
-  if (this->direction_sensor_ != nullptr) {
-    this->direction_sensor_->publish_state(direction);
+  cursor = end;
+  char *status_end = nullptr;
+  const long parsed_status = strtol(cursor, &status_end, 10);
+  if (status_end == cursor || parsed_status < 0 || parsed_status > 255) {
+    return false;
   }
-  if (this->speed_sensor_ != nullptr) {
-    this->speed_sensor_->publish_state(speed);
+  while (*status_end == '\r' || *status_end == '\n' || *status_end == ' ') {
+    ++status_end;
   }
+  if (*status_end != '\0' || !std::isfinite(first) || !std::isfinite(second)) {
+    return false;
+  }
+  status = static_cast<int>(parsed_status);
   return true;
 }
 
-void WindSonicComponent::update() {
-  this->power_on();
+void WindSonicComponent::publish_failure(bool vector_measurement, const String &response, int status) {
+  if (vector_measurement) {
+    if (this->u_sensor_ != nullptr) {
+      this->u_sensor_->publish_state(NAN);
+    }
+    if (this->v_sensor_ != nullptr) {
+      this->v_sensor_->publish_state(NAN);
+    }
+    if (this->raw_vector_sensor_ != nullptr) {
+      this->raw_vector_sensor_->publish_state(response.c_str());
+    }
+  } else {
+    if (this->direction_sensor_ != nullptr) {
+      this->direction_sensor_->publish_state(NAN);
+    }
+    if (this->speed_sensor_ != nullptr) {
+      this->speed_sensor_->publish_state(NAN);
+    }
+    if (this->raw_polar_sensor_ != nullptr) {
+      this->raw_polar_sensor_->publish_state(response.c_str());
+    }
+  }
+  if (this->status_code_sensor_ != nullptr) {
+    this->status_code_sensor_->publish_state(status);
+  }
+  if (this->status_sensor_ != nullptr) {
+    this->status_sensor_->publish_state(false);
+  }
+}
 
-  String polar_response;
-  if (!this->request_measurement("M", polar_response) ||
-      !this->parse_measurement_response(polar_response)) {
-    if (this->raw_response_sensor_ != nullptr) {
-      this->raw_response_sensor_->publish_state("NO_RESPONSE");
-    }
-    if (this->status_sensor_ != nullptr) {
-      this->status_sensor_->publish_state(false);
-    }
-    this->power_off();
+void WindSonicComponent::update() {
+  if (this->transaction_active_) {
     return;
   }
 
-  if (this->raw_response_sensor_ != nullptr) {
-    this->raw_response_sensor_->publish_state(polar_response.c_str());
+  const uint32_t now = millis();
+  const bool vector_enabled = this->u_sensor_ != nullptr || this->v_sensor_ != nullptr ||
+                              this->raw_vector_sensor_ != nullptr;
+  const bool polar_due = !this->polar_updated_ || now - this->last_polar_update_ >= this->polar_update_interval_ms_;
+  const bool vector_due = vector_enabled &&
+                          (!this->vector_updated_ || now - this->last_vector_update_ >= this->vector_update_interval_ms_);
+  if (!polar_due && !vector_due) {
+    return;
   }
 
-  if (this->status_sensor_ != nullptr) {
-    this->status_sensor_->publish_state(true);
+  this->transaction_active_ = true;
+  this->power_on();
+
+  if (polar_due) {
+    this->last_polar_update_ = now;
+    this->polar_updated_ = true;
+    String response;
+    float direction = NAN;
+    float speed = NAN;
+    int status = -1;
+    const bool parsed = this->request_measurement("M", response) &&
+                        this->parse_measurement_response(response, direction, speed, status);
+    if (this->raw_response_sensor_ != nullptr) {
+      this->raw_response_sensor_->publish_state(parsed ? response.c_str() : "NO_RESPONSE");
+    }
+    if (!parsed || status != 0 || direction == 999.99f || speed == 999.99f) {
+      this->publish_failure(false, response, parsed ? status : -1);
+    } else {
+      if (this->raw_polar_sensor_ != nullptr) {
+        this->raw_polar_sensor_->publish_state(response.c_str());
+      }
+      if (this->direction_sensor_ != nullptr) {
+        this->direction_sensor_->publish_state(direction);
+      }
+      if (this->speed_sensor_ != nullptr) {
+        this->speed_sensor_->publish_state(speed);
+      }
+      if (this->status_code_sensor_ != nullptr) {
+        this->status_code_sensor_->publish_state(status);
+      }
+      if (this->status_sensor_ != nullptr) {
+        this->status_sensor_->publish_state(true);
+      }
+    }
   }
+
+  if (vector_due) {
+    this->last_vector_update_ = now;
+    this->vector_updated_ = true;
+    String response;
+    float u = NAN;
+    float v = NAN;
+    int status = -1;
+    const bool parsed = this->request_measurement("M1", response) &&
+                        this->parse_measurement_response(response, u, v, status);
+    if (!parsed || status != 0 || u == 999.99f || v == 999.99f) {
+      this->publish_failure(true, response, parsed ? status : -1);
+    } else {
+      if (this->raw_vector_sensor_ != nullptr) {
+        this->raw_vector_sensor_->publish_state(response.c_str());
+      }
+      if (this->u_sensor_ != nullptr) {
+        this->u_sensor_->publish_state(u);
+      }
+      if (this->v_sensor_ != nullptr) {
+        this->v_sensor_->publish_state(v);
+      }
+      if (this->status_code_sensor_ != nullptr) {
+        this->status_code_sensor_->publish_state(status);
+      }
+      if (this->status_sensor_ != nullptr) {
+        this->status_sensor_->publish_state(true);
+      }
+    }
+  }
+
   this->power_off();
+  this->transaction_active_ = false;
 }
 
 void WindSonicComponent::dump_config() {
@@ -166,6 +253,8 @@ void WindSonicComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  Address: %s", this->address_.c_str());
   ESP_LOGCONFIG(TAG, "  Data pin: %d", this->data_pin_ != nullptr ? this->data_pin_->get_pin() : -1);
   ESP_LOGCONFIG(TAG, "  Response timeout: %ums", static_cast<unsigned int>(this->timeout_ms_));
+  ESP_LOGCONFIG(TAG, "  Polar update interval: %ums", static_cast<unsigned int>(this->polar_update_interval_ms_));
+  ESP_LOGCONFIG(TAG, "  Vector update interval: %ums", static_cast<unsigned int>(this->vector_update_interval_ms_));
 }
 
 }  // namespace windsonic
