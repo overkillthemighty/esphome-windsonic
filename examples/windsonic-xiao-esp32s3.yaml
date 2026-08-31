@@ -1,0 +1,65 @@
+substitutions:
+  node_name: windsonic-demo
+  friendly_name: WindSonic Demo
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: seeed_xiao_esp32s3
+  framework:
+    type: arduino
+
+logger:
+  baud_rate: 0
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: "windsonic123"
+
+captive_portal:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [windsonic]
+
+windsonic:
+  id: windsonic_bus
+  data_pin: GPIO9
+  power_pin: GPIO10
+  update_interval: 30s
+  timeout: 500ms
+  raw_response:
+    name: WindSonic Raw Response
+  status:
+    name: WindSonic Status
+  direction:
+    name: WindSonic Direction
+  speed:
+    name: WindSonic Speed
+  u:
+    name: WindSonic U Component
+  v:
+    name: WindSonic V Component
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: Demo IP
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi Signal
+    update_interval: 60s
