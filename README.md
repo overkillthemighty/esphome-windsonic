@@ -30,20 +30,25 @@ windsonic:
 	id: windsonic_bus
 	data_pin: GPIO9
 	power_pin: GPIO10
-	update_interval: 30s
+	polar_update_interval: 30s
+	vector_update_interval: 1s
 	timeout: 500ms
 	direction:
 		name: WindSonic Direction
 	speed:
 		name: WindSonic Speed
-	u:
-		name: WindSonic U Component
-	v:
-		name: WindSonic V Component
 	status:
 		name: WindSonic Status
 	raw_response:
 		name: WindSonic Raw Response
+	raw_polar:
+		name: WindSonic Raw Polar
+	raw_vector:
+		name: WindSonic Raw Vector
+	u:
+		name: WindSonic U
+	v:
+		name: WindSonic V
 ```
 
 For a Git-based external component, replace the local source with the repository URL and a pinned revision:
@@ -57,15 +62,16 @@ external_components:
 		components: [windsonic]
 ```
 
-The component sends the SDI-12 `M!` command, waits for the sensor's ready response, then requests `D0!`. The first four values are exposed as direction in degrees, speed in m/s, and the U/V wind-vector components in m/s.
+The component sends `M!` followed by `D0!` for polar readings and `M1!` followed by `D0!` for vector readings. U and V are parsed as signed m/s values. Polar and vector readings have independent polling intervals; the default vector interval is 1 second. `raw_polar` and `raw_vector` expose complete replies for diagnostics.
 
 ## Troubleshooting
 
 - Confirm the WindSonic has its required supply voltage and shares ground with the ESP32.
 - Use an appropriate SDI-12 physical interface; a direct 3.3 V GPIO connection is not a substitute for bus protection and level handling.
 - Keep the data line short during initial testing and verify the sensor address is `0` unless it was changed.
-- Enable `raw_response` and inspect the ESPHome logs when diagnosing wiring or protocol problems.
+- Enable `raw_response`, `raw_polar`, and `raw_vector` and inspect the ESPHome logs when diagnosing wiring or protocol problems. Commands and complete replies are logged at `VERY_VERBOSE` level.
 - A `false` status means the component did not receive a valid measurement response during the configured timeout.
+- Invalid replies, nonzero status codes, and `999.99` fault values publish `NaN` for the affected measurements. The numeric `status_code` sensor preserves the WindSonic status value.
 
 The component pins EnviroDIY `SDI-12` library version `2.3.2` through ESPHome code generation.
 

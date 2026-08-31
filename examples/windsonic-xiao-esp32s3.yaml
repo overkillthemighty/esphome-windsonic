@@ -39,20 +39,27 @@ windsonic:
   id: windsonic_bus
   data_pin: GPIO9
   power_pin: GPIO10
-  update_interval: 30s
+  polar_update_interval: 30s
+  vector_update_interval: 1s
   timeout: 500ms
   raw_response:
     name: WindSonic Raw Response
+  raw_polar:
+    name: WindSonic Raw Polar
+  raw_vector:
+    name: WindSonic Raw Vector
   status:
     name: WindSonic Status
+  status_code:
+    name: WindSonic Status Code
   direction:
     name: WindSonic Direction
   speed:
     name: WindSonic Speed
   u:
-    name: WindSonic U Component
+    name: WindSonic U
   v:
-    name: WindSonic V Component
+    name: WindSonic V
 
 text_sensor:
   - platform: wifi_info
