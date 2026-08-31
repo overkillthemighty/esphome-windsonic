@@ -34,8 +34,8 @@ class WindSonicComponent : public PollingComponent {
   void power_on();
   void power_off();
   bool read_response(String &response);
-  bool request_measurement(String &response);
-  bool parse_measurement_response(const String &response);
+  bool request_measurement(const char *measurement, String &response);
+  bool parse_measurement_response(const String &response, bool vector_measurement);
 
   InternalGPIOPin *data_pin_{nullptr};
   GPIOPin *power_pin_{nullptr};

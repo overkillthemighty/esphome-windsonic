@@ -66,12 +66,12 @@ bool WindSonicComponent::read_response(String &response) {
   return received_data;
 }
 
-bool WindSonicComponent::request_measurement(String &response) {
+bool WindSonicComponent::request_measurement(const char *measurement, String &response) {
   if (this->sdi12_ == nullptr) {
     return false;
   }
 
-  std::string command = this->address_ + "M!";
+  std::string command = this->address_ + measurement + "!";
   this->sdi12_->clearBuffer();
   this->sdi12_->sendCommand(command.c_str(), 0);
   if (!this->read_response(response) || response.length() < 4) {
@@ -90,7 +90,7 @@ bool WindSonicComponent::request_measurement(String &response) {
   return this->read_response(response);
 }
 
-bool WindSonicComponent::parse_measurement_response(const String &response) {
+bool WindSonicComponent::parse_measurement_response(const String &response, bool vector_measurement) {
   if (response.length() == 0) {
     return false;
   }
@@ -125,21 +125,21 @@ bool WindSonicComponent::parse_measurement_response(const String &response) {
 
   const float direction = values[0];
   const float speed = values[1];
-  const float direction_radians = direction * static_cast<float>(M_PI / 180.0);
-  const float u = -speed * std::sin(direction_radians);
-  const float v = -speed * std::cos(direction_radians);
 
-  if (this->direction_sensor_ != nullptr) {
-    this->direction_sensor_->publish_state(direction);
-  }
-  if (this->speed_sensor_ != nullptr) {
-    this->speed_sensor_->publish_state(speed);
-  }
-  if (this->u_sensor_ != nullptr) {
-    this->u_sensor_->publish_state(u);
-  }
-  if (this->v_sensor_ != nullptr) {
-    this->v_sensor_->publish_state(v);
+  if (vector_measurement) {
+    if (this->u_sensor_ != nullptr) {
+      this->u_sensor_->publish_state(direction);
+    }
+    if (this->v_sensor_ != nullptr) {
+      this->v_sensor_->publish_state(speed);
+    }
+  } else {
+    if (this->direction_sensor_ != nullptr) {
+      this->direction_sensor_->publish_state(direction);
+    }
+    if (this->speed_sensor_ != nullptr) {
+      this->speed_sensor_->publish_state(speed);
+    }
   }
   return true;
 }
@@ -147,8 +147,16 @@ bool WindSonicComponent::parse_measurement_response(const String &response) {
 void WindSonicComponent::update() {
   this->power_on();
 
-  String response;
-  if (!this->request_measurement(response)) {
+  String polar_response;
+  const bool polar_ok = this->request_measurement("M", polar_response) &&
+                        this->parse_measurement_response(polar_response, false);
+  const bool needs_vector = this->u_sensor_ != nullptr || this->v_sensor_ != nullptr;
+  String vector_response;
+  const bool vector_ok = !needs_vector ||
+                         (this->request_measurement("M1", vector_response) &&
+                          this->parse_measurement_response(vector_response, true));
+
+  if (!polar_ok || !vector_ok) {
     if (this->raw_response_sensor_ != nullptr) {
       this->raw_response_sensor_->publish_state("NO_RESPONSE");
     }
@@ -160,14 +168,17 @@ void WindSonicComponent::update() {
   }
 
   if (this->raw_response_sensor_ != nullptr) {
-    this->raw_response_sensor_->publish_state(response.c_str());
+    String raw_response = polar_response;
+    if (needs_vector) {
+      raw_response += ";";
+      raw_response += vector_response;
+    }
+    this->raw_response_sensor_->publish_state(raw_response.c_str());
   }
 
-  const bool ok = this->parse_measurement_response(response);
   if (this->status_sensor_ != nullptr) {
-    this->status_sensor_->publish_state(ok);
+    this->status_sensor_->publish_state(true);
   }
-
   this->power_off();
 }
 
