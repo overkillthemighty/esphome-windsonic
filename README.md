@@ -36,10 +36,6 @@ windsonic:
 		name: WindSonic Direction
 	speed:
 		name: WindSonic Speed
-	u:
-		name: WindSonic U Component
-	v:
-		name: WindSonic V Component
 	status:
 		name: WindSonic Status
 	raw_response:
@@ -57,7 +53,7 @@ external_components:
 		components: [windsonic]
 ```
 
-The component sends `M!` followed by `D0!` for direction and speed, then sends `M1!` followed by `D0!` when U or V is configured. WindSonic returns direction in degrees, speed in m/s, and a status code for the first transaction; the M1 transaction returns signed U and V components in m/s.
+The component sends `M!` followed by `D0!`. WindSonic returns direction in degrees, speed in m/s, and a status code.
 
 ## Troubleshooting
 

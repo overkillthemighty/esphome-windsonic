@@ -90,7 +90,7 @@ bool WindSonicComponent::request_measurement(const char *measurement, String &re
   return this->read_response(response);
 }
 
-bool WindSonicComponent::parse_measurement_response(const String &response, bool vector_measurement) {
+bool WindSonicComponent::parse_measurement_response(const String &response) {
   if (response.length() == 0) {
     return false;
   }
@@ -126,20 +126,11 @@ bool WindSonicComponent::parse_measurement_response(const String &response, bool
   const float direction = values[0];
   const float speed = values[1];
 
-  if (vector_measurement) {
-    if (this->u_sensor_ != nullptr) {
-      this->u_sensor_->publish_state(direction);
-    }
-    if (this->v_sensor_ != nullptr) {
-      this->v_sensor_->publish_state(speed);
-    }
-  } else {
-    if (this->direction_sensor_ != nullptr) {
-      this->direction_sensor_->publish_state(direction);
-    }
-    if (this->speed_sensor_ != nullptr) {
-      this->speed_sensor_->publish_state(speed);
-    }
+  if (this->direction_sensor_ != nullptr) {
+    this->direction_sensor_->publish_state(direction);
+  }
+  if (this->speed_sensor_ != nullptr) {
+    this->speed_sensor_->publish_state(speed);
   }
   return true;
 }
@@ -148,15 +139,8 @@ void WindSonicComponent::update() {
   this->power_on();
 
   String polar_response;
-  const bool polar_ok = this->request_measurement("M", polar_response) &&
-                        this->parse_measurement_response(polar_response, false);
-  const bool needs_vector = this->u_sensor_ != nullptr || this->v_sensor_ != nullptr;
-  String vector_response;
-  const bool vector_ok = !needs_vector ||
-                         (this->request_measurement("M1", vector_response) &&
-                          this->parse_measurement_response(vector_response, true));
-
-  if (!polar_ok || !vector_ok) {
+  if (!this->request_measurement("M", polar_response) ||
+      !this->parse_measurement_response(polar_response)) {
     if (this->raw_response_sensor_ != nullptr) {
       this->raw_response_sensor_->publish_state("NO_RESPONSE");
     }
@@ -168,12 +152,7 @@ void WindSonicComponent::update() {
   }
 
   if (this->raw_response_sensor_ != nullptr) {
-    String raw_response = polar_response;
-    if (needs_vector) {
-      raw_response += ";";
-      raw_response += vector_response;
-    }
-    this->raw_response_sensor_->publish_state(raw_response.c_str());
+    this->raw_response_sensor_->publish_state(polar_response.c_str());
   }
 
   if (this->status_sensor_ != nullptr) {

@@ -22,8 +22,6 @@ CONF_DATA_PIN = "data_pin"
 CONF_POWER_PIN = "power_pin"
 CONF_RAW_RESPONSE = "raw_response"
 CONF_STATUS = "status"
-CONF_U = "u"
-CONF_V = "v"
 CONF_SPEED = "speed"
 CONF_DIRECTION = "direction"
 
@@ -60,16 +58,6 @@ CONFIG_SCHEMA = cv.All(
                 device_class=DEVICE_CLASS_WIND_SPEED,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
-            cv.Optional(CONF_U): sensor.sensor_schema(
-                unit_of_measurement=UNIT_METER_PER_SECOND,
-                accuracy_decimals=2,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
-            cv.Optional(CONF_V): sensor.sensor_schema(
-                unit_of_measurement=UNIT_METER_PER_SECOND,
-                accuracy_decimals=2,
-                state_class=STATE_CLASS_MEASUREMENT,
-            ),
         }
     ).extend(cv.polling_component_schema("60s")),
 )
@@ -104,13 +92,5 @@ async def to_code(config):
     if CONF_SPEED in config:
         sens = await sensor.new_sensor(config[CONF_SPEED])
         cg.add(var.set_speed_sensor(sens))
-
-    if CONF_U in config:
-        sens = await sensor.new_sensor(config[CONF_U])
-        cg.add(var.set_u_sensor(sens))
-
-    if CONF_V in config:
-        sens = await sensor.new_sensor(config[CONF_V])
-        cg.add(var.set_v_sensor(sens))
 
     cg.add_library("SDI-12", "2.3.2")

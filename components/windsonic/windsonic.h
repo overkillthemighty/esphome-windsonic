@@ -27,15 +27,13 @@ class WindSonicComponent : public PollingComponent {
   void set_status_sensor(binary_sensor::BinarySensor *sensor) { this->status_sensor_ = sensor; }
   void set_direction_sensor(sensor::Sensor *sensor) { this->direction_sensor_ = sensor; }
   void set_speed_sensor(sensor::Sensor *sensor) { this->speed_sensor_ = sensor; }
-  void set_u_sensor(sensor::Sensor *sensor) { this->u_sensor_ = sensor; }
-  void set_v_sensor(sensor::Sensor *sensor) { this->v_sensor_ = sensor; }
 
  protected:
   void power_on();
   void power_off();
   bool read_response(String &response);
   bool request_measurement(const char *measurement, String &response);
-  bool parse_measurement_response(const String &response, bool vector_measurement);
+  bool parse_measurement_response(const String &response);
 
   InternalGPIOPin *data_pin_{nullptr};
   GPIOPin *power_pin_{nullptr};
@@ -46,8 +44,6 @@ class WindSonicComponent : public PollingComponent {
   binary_sensor::BinarySensor *status_sensor_{nullptr};
   sensor::Sensor *direction_sensor_{nullptr};
   sensor::Sensor *speed_sensor_{nullptr};
-  sensor::Sensor *u_sensor_{nullptr};
-  sensor::Sensor *v_sensor_{nullptr};
 };
 
 }  // namespace windsonic

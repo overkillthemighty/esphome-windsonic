@@ -49,10 +49,6 @@ windsonic:
     name: WindSonic Direction
   speed:
     name: WindSonic Speed
-  u:
-    name: WindSonic U Component
-  v:
-    name: WindSonic V Component
 
 text_sensor:
   - platform: wifi_info
